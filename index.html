@@ -564,34 +564,16 @@
                     // إذا كان السؤال ملفوف داخل parts، خذ أول جزء فقط
                     let part = q.parts ? q.parts[0] : q;
 
-                    // أصلح رقم n
-                    part.n = n;
-
-                    // أصلح metadata
-                    part.metadata = {
-                        id: uniqueId,
-                        title: "",
-                        automark: true,
-                        category: category,
-                        country: country,
-                        language: language,
-                        dialect: dialect,
-                        mapped_id: uniqueId,
-                        source_id: { value: sourceIdValue, page_number: null },
-                        description: part.stem ? part.stem.replace(/<[^>]+>/g, '') : (part.question || ''),
-                        has_example: true,
-                        parts_count: 1,
-                        instances_count: instancesCount,
-                        publication_date: publicationDate,
-                        statement: null
-                    };
-
-                    // أصلح choices إذا لزم الأمر
-                    if (Array.isArray(part.choices)) {
-                        part.choices = part.choices.map((choice, i) => {
+                    // أعد بناء الحقول الأساسية بشكل إجباري
+                    const rebuiltPart = {
+                        n: n,
+                        stem: part.stem ? part.stem : (part.question ? `<p>${this.escapeHtml(part.question)}</p>` : ''),
+                        type: part.type || 'unknown',
+                        answer: (typeof part.answer !== 'undefined') ? part.answer : null,
+                        choices: Array.isArray(part.choices) ? part.choices.map((choice, i) => {
                             let text = choice.text || choice.html_content || choice;
                             return {
-                                type: choice.type || ((i === part.answer) ? 'key' : 'distractor'),
+                                type: (i === part.answer) ? 'key' : 'distractor',
                                 unit: (i === part.answer) ? '<span>unit</span>' : null,
                                 index: i,
                                 values: (i === part.answer) ? [{ type: 'decimal', value: '1' }] : [],
@@ -599,11 +581,29 @@
                                 fixed_order: (i === 0) ? 4 : (i === 1) ? 1 : (i === 2) ? 3 : 2,
                                 html_content: `<span>${this.escapeHtml(text)}</span>`
                             };
-                        });
-                    }
+                        }) : [],
+                        subtype: part.subtype || null,
+                        standalone: true,
+                        metadata: {
+                            id: uniqueId,
+                            title: "",
+                            automark: true,
+                            category: category,
+                            country: country,
+                            language: language,
+                            dialect: dialect,
+                            mapped_id: uniqueId,
+                            source_id: { value: sourceIdValue, page_number: null },
+                            description: part.stem ? part.stem.replace(/<[^>]+>/g, '') : (part.question || ''),
+                            has_example: true,
+                            parts_count: 1,
+                            instances_count: instancesCount,
+                            publication_date: publicationDate,
+                            statement: null
+                        }
+                    };
 
-                    // أعد بناء السؤال في نفس شكل advancedQuestion
-                    return { parts: [part] };
+                    return { parts: [rebuiltPart] };
                 });
             }
 
@@ -1430,4 +1430,3 @@
     </script>
 </body>
 </html>
-
