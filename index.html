@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -1298,6 +1297,208 @@
                 const rows = this.csvData.map(row => header.map(h => (row[h] || '').toString().replace(/"/g, '""')));
                 const csv = [header.join(',')].concat(rows.map(r => r.map(f => '"' + f + '"').join(','))).join('\n');
                 return csv;
+            }
+
+            openCSVPopup() {
+                if (this.questions.length === 0) {
+                    this.showMessage('يجب إدخال وتحليل الأسئلة أولاً قبل فتح جدول CSV', 'warning');
+                    return;
+                }
+                // جهز البيانات لإرسالها
+                const defaultLang = this.customization.country || 'eg';
+                const defaultCategory = this.customization.category || 'lesson';
+                const defaultDialect = this.customization.dialect || 'Modern_standard';
+                const csvData = this.questions.map((q, idx) => ({
+                    'Question Id': q.id,
+                    'Lang': defaultLang,
+                    'Lesson Id': '',
+                    'Attributes': q.type === 'multiple_choice' ? 'mcq' : (q.type || ''),
+                    'Category': defaultCategory,
+                    'Dialect': defaultDialect
+                }));
+
+                // افتح نافذة جديدة
+                const win = window.open('', 'CSVEditor', 'width=1200,height=800');
+                if (!win) {
+                    this.showMessage('يجب السماح بالنوافذ المنبثقة (Popup) في المتصفح!', 'error');
+                    return;
+                }
+
+                // HTML للنافذة الجديدة
+                win.document.write(`
+                    <html>
+                    <head>
+                        <title>CSV Editor</title>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable@14.3.0/dist/handsontable.min.css" />
+                        <style>
+                            html, body {
+                                height: 100%;
+                            }
+                            body {
+                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                background: #f3f4f6;
+                                margin: 0;
+                                padding: 0;
+                                min-height: 100vh;
+                                min-width: 100vw;
+                                display: flex;
+                                flex-direction: column;
+                                align-items: center;
+                                justify-content: center;
+                            }
+                            #csvContentWrapper {
+                                display: flex;
+                                flex-direction: column;
+                                align-items: center;
+                                justify-content: center;
+                                width: 100vw;
+                                height: 100vh;
+                            }
+                            #hotTable {
+                                width: 95vw;
+                                max-width: 1100px;
+                                margin: 0 auto 10px auto;
+                            }
+                            .csv-warning {
+                                color: #dc2626;
+                                font-weight: bold;
+                                margin: 20px 0 10px 0;
+                                text-align: center;
+                            }
+                            .csv-controls {
+                                display: flex;
+                                gap: 10px;
+                                justify-content: center;
+                                margin: 20px 0;
+                            }
+                            .btn {
+                                padding: 12px 24px;
+                                border-radius: 8px;
+                                border: none;
+                                font-size: 1em;
+                                font-weight: bold;
+                                cursor: pointer;
+                            }
+                            .btn-success { background: #10b981; color: white; }
+                            .btn-secondary { background: #f3f4f6; color: #374151; border: 2px solid #d1d5db; }
+                        </style>
+                    </head>
+                    <body>
+                        <div id="csvContentWrapper">
+                            <h2 style="text-align:center; color:#4f46e5; margin-top:20px;">CSV Editor</h2>
+                            <div class="csv-warning" id="csvWarning" style="display:none;"></div>
+                            <div id="hotTable"></div>
+                            <div class="csv-controls">
+                                <button class="btn btn-success" id="saveBtn">💾 حفظ</button>
+                                <button class="btn btn-secondary" onclick="window.close()">❌ إغلاق</button>
+                            </div>
+                        </div>
+                        <script src="https://cdn.jsdelivr.net/npm/handsontable@14.3.0/dist/handsontable.min.js"></script>
+                        <script>
+                            const columns = [
+                                {data: 'Question Id', type: 'text'},
+                                {data: 'Lang', type: 'text', readOnly: true},
+                                {data: 'Lesson Id', type: 'text'},
+                                {data: 'Attributes', type: 'text', readOnly: true},
+                                {data: 'Category', type: 'text', readOnly: true},
+                                {data: 'Dialect', type: 'text', readOnly: true}
+                            ];
+                            let csvData = ${JSON.stringify(csvData)};
+                            const hot = new Handsontable(document.getElementById('hotTable'), {
+                                data: csvData,
+                                colHeaders: ['Question Id', 'Lang', 'Lesson Id', 'Attributes', 'Category', 'Dialect'],
+                                columns: columns,
+                                rowHeaders: true,
+                                width: '100%',
+                                height: 500,
+                                licenseKey: 'non-commercial-and-evaluation',
+                                manualColumnResize: true,
+                                manualRowResize: true,
+                                stretchH: 'all',
+                                allowInsertRow: true,
+                                allowRemoveRow: true,
+                                allowCopy: true,
+                                allowPaste: true,
+                                contextMenu: true,
+                                afterChange: (changes, source) => {
+                                    if (!changes) return;
+                                    for (const [row, prop, oldVal, newVal] of changes) {
+                                        if (prop === 'Lesson Id' && newVal && oldVal !== newVal) {
+                                            if (confirm('هل تريد ملء باقي الصفوف بـ Lesson Id هذا حتى آخر سؤال؟')) {
+                                                for (let r = row; r < csvData.length; r++) {
+                                                    csvData[r]['Lesson Id'] = newVal;
+                                                }
+                                                hot.loadData(csvData);
+                                            }
+                                        }
+                                    }
+                                    validateCSV();
+                                },
+                                cells: (row, col) => {
+                                    const cellProperties = {};
+                                    if (col === 0 && isDuplicateQuestionId(row)) {
+                                        cellProperties.renderer = (instance, td, ...args) => {
+                                            Handsontable.renderers.TextRenderer.apply(this, arguments);
+                                            td.style.background = '#fee2e2';
+                                            td.style.color = '#b91c1c';
+                                        };
+                                    }
+                                    return cellProperties;
+                                }
+                            });
+
+                            function isDuplicateQuestionId(rowIdx) {
+                                const val = csvData[rowIdx]['Question Id'];
+                                if (!val) return false;
+                                let count = 0;
+                                for (let i = 0; i < csvData.length; i++) {
+                                    if (csvData[i]['Question Id'] == val) count++;
+                                }
+                                return count > 1;
+                            }
+
+                            function validateCSV() {
+                                let hasDuplicate = false;
+                                const ids = {};
+                                for (let i = 0; i < csvData.length; i++) {
+                                    const id = csvData[i]['Question Id'];
+                                    if (id) {
+                                        ids[id] = (ids[id] || 0) + 1;
+                                        if (ids[id] > 1) hasDuplicate = true;
+                                    }
+                                }
+                                const warn = document.getElementById('csvWarning');
+                                if (hasDuplicate) {
+                                    warn.style.display = 'block';
+                                    warn.textContent = 'هناك Question Id مكرر!';
+                                } else {
+                                    warn.style.display = 'none';
+                                }
+                                hot.render();
+                            }
+
+                            document.getElementById('saveBtn').onclick = function() {
+                                if (window.opener && window.opener.app) {
+                                    window.opener.app.csvData = hot.getData().map(row => {
+                                        return {
+                                            'Question Id': row[0],
+                                            'Lang': row[1],
+                                            'Lesson Id': row[2],
+                                            'Attributes': row[3],
+                                            'Category': row[4],
+                                            'Dialect': row[5]
+                                        };
+                                    });
+                                    window.opener.app.showMessage('تم حفظ بيانات CSV بنجاح', 'success');
+                                }
+                                window.close();
+                            };
+                            validateCSV();
+                        <\/script>
+                    </body>
+                    </html>
+                `);
+                win.document.close();
             }
         }
 
