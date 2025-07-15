@@ -567,13 +567,37 @@
                     // إذا لم يحدد الذكاء الاصطناعي الإجابة الصحيحة، اجعل أول خيار هو الصحيح
                     let answerIndex = (typeof part.answer !== 'undefined' && part.answer !== null) ? part.answer : 0;
 
+                    // معالجة نص السؤال
+                    let questionText = '';
+                    if (typeof part.stem === 'string' && part.stem.trim() !== '') {
+                        questionText = part.stem;
+                    } else if (typeof part.question === 'string' && part.question.trim() !== '') {
+                        questionText = `<p>${this.escapeHtml(part.question)}</p>`;
+                    } else {
+                        questionText = '<p>سؤال بدون نص</p>';
+                    }
+
                     const rebuiltPart = {
                         n: n,
-                        stem: part.stem ? part.stem : (part.question ? `<p>${this.escapeHtml(part.question)}</p>` : ''),
+                        stem: questionText,
                         type: part.type || 'unknown',
                         answer: answerIndex,
                         choices: Array.isArray(part.choices) ? part.choices.map((choice, i) => {
-                            let text = choice.text || choice.html_content || choice;
+                            // معالجة نص الخيار
+                            let text = '';
+                            if (typeof choice === 'string') {
+                                text = choice;
+                            } else if (typeof choice === 'object' && choice !== null) {
+                                if (typeof choice.text === 'string') {
+                                    text = choice.text;
+                                } else if (typeof choice.html_content === 'string') {
+                                    text = choice.html_content.replace(/<[^>]+>/g, '');
+                                } else {
+                                    text = JSON.stringify(choice);
+                                }
+                            } else {
+                                text = String(choice);
+                            }
                             return {
                                 type: (i === answerIndex) ? 'key' : 'distractor',
                                 unit: (i === answerIndex) ? '<span>unit</span>' : null,
@@ -596,7 +620,7 @@
                             dialect: dialect,
                             mapped_id: uniqueId,
                             source_id: { value: sourceIdValue, page_number: null },
-                            description: part.stem ? part.stem.replace(/<[^>]+>/g, '') : (part.question || ''),
+                            description: (typeof part.stem === 'string' && part.stem.trim() !== '') ? part.stem.replace(/<[^>]+>/g, '') : (typeof part.question === 'string' ? part.question : 'سؤال بدون نص'),
                             has_example: true,
                             parts_count: 1,
                             instances_count: instancesCount,
@@ -1068,7 +1092,7 @@
                                      style="cursor:pointer;"
                                      onclick="app.setCorrectAnswer(${q.id}, ${i})"
                                      title="اضغط لجعل هذا هو الجواب الصحيح">
-                                    ${this.escapeHtml(choice)}
+                                    ${choice.html_content ? choice.html_content : this.escapeHtml(choice.text || (typeof choice === 'string' ? choice : ''))}
                                 </div>`).join('');
                         } else if (q.answer !== null && q.answer !== undefined && q.answer !== '') {
                              content += `<div class="choice-item correct">الإجابة: ${this.escapeHtml(q.answer)}</div>`;
@@ -1432,4 +1456,3 @@
     </script>
 </body>
 </html>
-
