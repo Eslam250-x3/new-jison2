@@ -628,6 +628,8 @@
                 document.getElementById('copyBtn').disabled = true;
                 document.getElementById('downloadBtn').disabled = true;
                 document.getElementById('downloadZipBtn').disabled = true;
+                // امسح بيانات CSV من LocalStorage
+                localStorage.removeItem('aiq_csv_data');
                 this.showMessage('تم مسح كل شيء', 'success');
             }
             
@@ -940,6 +942,8 @@
                     const questionDiv = document.createElement('div');
                     questionDiv.className = 'question-preview';
                     const typeTranslations = { multiple_choice: 'اختيار من متعدد', true_false: 'صح / خطأ', fill_blank: 'ملء الفراغ', essay: 'مقالي', matching: 'مطابقة', short_answer: 'إجابة قصيرة', unknown: 'غير معروف' };
+                    // احصل على Question Id من csvData إذا كانت موجودة
+                    const questionId = (this.csvData && this.csvData[index] && this.csvData[index]['Question Id']) || q.id;
                     if (q._editing) {
                         let editContent = `
                             <div class="question-type-badge type-${q.type || 'unknown'}">${typeTranslations[q.type] || 'غير معروف'}</div>
@@ -964,7 +968,9 @@
                                 <button class="action-btn" onclick="app.deleteQuestion(${q.id})" title="حذف السؤال">🗑️</button>
                                 <button class="action-btn" onclick="app.startEditQuestion(${q.id})" title="تعديل السؤال">✏️</button>
                             </div>
-                            <div class="question-type-badge type-${q.type || 'unknown'}">${typeTranslations[q.type] || 'غير معروف'}</div>
+                            <div class="question-type-badge type-${q.type || 'unknown'}">
+                                ${typeTranslations[q.type] || 'غير معروف'} | ID: ${questionId}
+                            </div>
                             <h4>${q.id}. <span class="question-stem" style="display:inline;">${this.escapeHtml(q.question)}</span></h4>`;
                         if (q.choices) {
                             content += q.choices.map((choice, i) => `
@@ -1198,22 +1204,28 @@
                     {data: 'Category', type: 'text', readOnly: true},
                     {data: 'Dialect', type: 'text', readOnly: true}
                 ];
-                // ملء البيانات تلقائيًا
-                const defaultLang = this.customization.country || 'eg';
-                const defaultCategory = this.customization.category || 'lesson';
-                const defaultDialect = this.customization.dialect || 'Modern_standard';
-                this.csvData = this.questions.map((q, idx) => ({
-                    'Question Id': q.id,
-                    'Lang': defaultLang,
-                    'Lesson Id': '',
-                    'Attributes': q.type === 'multiple_choice' ? 'mcq' : (q.type || ''),
-                    'Category': defaultCategory,
-                    'Dialect': defaultDialect
-                }));
+                // جلب بيانات CSV من LocalStorage إذا وجدت
+                const saved = localStorage.getItem('aiq_csv_data');
+                if (saved) {
+                    this.csvData = JSON.parse(saved);
+                } else {
+                    const defaultLang = this.customization.country || 'eg';
+                    const defaultCategory = this.customization.category || 'lesson';
+                    const defaultDialect = this.customization.dialect || 'Modern_standard';
+                    this.csvData = this.questions.map((q, idx) => ({
+                        'Question Id': q.id,
+                        'Lang': defaultLang,
+                        'Lesson Id': '',
+                        'Attributes': q.type === 'multiple_choice' ? 'mcq' : (q.type || ''),
+                        'Category': defaultCategory,
+                        'Dialect': defaultDialect
+                    }));
+                }
                 // عرض المودال
                 document.getElementById('csvModalBg').style.display = 'flex';
                 // تهيئة Handsontable
                 if (this.hotInstance) this.hotInstance.destroy();
+                const self = this;
                 this.hotInstance = new Handsontable(document.getElementById('hotTable'), {
                     data: this.csvData,
                     colHeaders: ['Question Id', 'Lang', 'Lesson Id', 'Attributes', 'Category', 'Dialect'],
@@ -1229,7 +1241,24 @@
                     allowRemoveRow: true,
                     allowCopy: true,
                     allowPaste: true,
-                    contextMenu: true,
+                    contextMenu: {
+                        items: {
+                            'row_above': {},
+                            'row_below': {},
+                            'remove_row': {},
+                            '---------': {},
+                            'copy': {name: 'Copy'},
+                            'paste': {name: '📋 Paste'},
+                        }
+                    },
+                    afterPaste(data, coords) {
+                        // data: array of arrays (rows)
+                        const currentRows = self.hotInstance.countRows();
+                        const pasteRows = data.length;
+                        if (pasteRows > currentRows) {
+                            self.hotInstance.alter('insert_row', currentRows, pasteRows - currentRows);
+                        }
+                    },
                     afterChange: (changes, source) => {
                         if (!changes) return;
                         for (const [row, prop, oldVal, newVal] of changes) {
@@ -1277,8 +1306,12 @@
                             'Dialect': row[5]
                         };
                     });
+                    // حفظ بيانات CSV في LocalStorage
+                    localStorage.setItem('aiq_csv_data', JSON.stringify(this.csvData));
                     this.showMessage('تم حفظ بيانات CSV بنجاح', 'success');
                     this.closeCSVModal();
+                    // تحديث معاينة الأسئلة تلقائيًا
+                    this.displayResults();
                 }
             }
 
