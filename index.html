@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>محول الأسئلة الذكي المتطور - النسخة المدمجة</title>
+    <title>محول الأسئلة الذكي (ID فارغ)</title>
     <!-- تأكد من تحميل JSZip أولاً -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- Handsontable CSS & JS -->
@@ -315,7 +315,7 @@
     <div class="container">
         <div class="header">
             <div class="ai-badge">🤖 AI Powered</div>
-            <h1>🚀 محول الأسئلة الذكي المتطور</h1>
+            <h1>🚀 محول الأسئلة الذكي</h1>
             <p>حوّل نصوص الأسئلة إلى صيغة JSON متقدمة بضغطة زر</p>
         </div>
 
@@ -472,9 +472,7 @@
                     en_trueFalse: /(true\s*(or|\/)\s*false)/i,
                     en_essay: /(explain|describe|discuss|write|why|how|justify|reason)/i
                 };
-                // تحميل الإعدادات من LocalStorage إذا وجدت
                 this.loadSettings();
-                // تحميل مفتاح الـ API من LocalStorage إذا وجد
                 this.loadApiKey();
                 this.csvData = [];
                 this.hotInstance = null;
@@ -501,8 +499,9 @@
                     this.showMessage('الرجاء إدخال مفتاح Gemini API للمتابعة', 'error');
                     return;
                 }
-                if (this.questions.length === 0) {
-                    this.showMessage('الرجاء إجراء تحليل مبدئي أولاً قبل التحسين', 'warning');
+                const rawText = document.getElementById('questionInput').value.trim();
+                if (!rawText) {
+                    this.showMessage('الرجاء إدخال نص للتحسين', 'warning');
                     return;
                 }
                 if (this.isAIProcessing) return;
@@ -511,31 +510,52 @@
                 this.toggleAIButtonLoading(true);
 
                 try {
-                    const rawText = document.getElementById('questionInput').value;
                     const prompt = `
-                        You are an expert system for structuring test questions from raw text into precise JSON format.
+                        You are an expert system for structuring test questions from raw text into a simple JSON format.
                         Task: Analyze the following raw text containing questions.
-                        Your job is to correct any errors and return a single, valid JSON array containing all question objects, properly structured.
-                        Each object must have "id", "type", "question", "choices" (if any), "answer" (the index of the correct choice, or the correct text), and a "confidence" score (0.0 to 1.0).
-                        The "type" can be "multiple_choice", "true_false", "essay", "short_answer", "fill_blank", or "matching".
+                        Your job is to return a single, valid JSON array of question objects.
+                        Each object must have:
+                        - "type": (string) one of "multiple_choice", "true_false", "essay", "short_answer", "fill_blank", "matching".
+                        - "question": (string) The text of the question itself.
+                        - "choices": (array of strings) The list of possible answers. For true/false, use ["True", "False"] or ["صح", "خطأ"]. For other types, this can be an empty array.
+                        - "answer": (number or string) For multiple_choice/true_false, this is the 0-based index of the correct choice in the "choices" array. For other types, it can be the correct string answer. If the answer is not clear, use null.
+                        - "confidence": (number) Your confidence in the accuracy of the extraction, from 0.0 to 1.0.
 
                         Raw Text:
                         ---
                         ${rawText}
                         ---
-                        
+
                         IMPORTANT: Return ONLY the raw JSON array. Do not include any explanatory text, markdown formatting like \`\`\`json, or anything else. Your entire response must be the JSON array itself.
                     `;
-                    
+
                     const aiResult = await this.callGeminiAPI(prompt, apiKey);
 
                     if (aiResult && Array.isArray(aiResult)) {
-                        // راجع وصحح الجيسون
-                        const fixed = this.fixAIJsonStandards(aiResult);
-                        this.questions = fixed.map(q => q.parts[0]);
+                        this.questions = aiResult.map((q, index) => {
+                            const questionText = q.question || "No question text found";
+                            const questionType = q.type || "unknown";
+                            const choices = q.choices || [];
+                            let answerIndex = q.answer;
+                            if (questionType === 'multiple_choice' || questionType === 'true_false') {
+                                if (typeof answerIndex !== 'number' || answerIndex < 0 || answerIndex >= choices.length) {
+                                    answerIndex = null;
+                                }
+                            }
+
+                            return {
+                                id: index + 1,
+                                originalText: `AI: ${questionText.substring(0, 50)}...`,
+                                type: questionType,
+                                confidence: q.confidence || 0.85,
+                                question: questionText,
+                                choices: choices,
+                                answer: answerIndex
+                            };
+                        });
                         this.updateUIAfterChange('تم تحسين وتصحيح الأسئلة بنجاح باستخدام الذكاء الاصطناعي!');
                     } else {
-                         this.showMessage('استجاب الذكاء الاصطناعي بصيغة غير متوقعة.', 'error');
+                        this.showMessage('استجاب الذكاء الاصطناعي بصيغة غير متوقعة أو فارغة.', 'error');
                     }
 
                 } catch (error) {
@@ -547,164 +567,76 @@
                 }
             }
 
-            // دالة مراجعة وتصحيح الجيسون الناتج من الذكاء الاصطناعي
-            fixAIJsonStandards(aiQuestions) {
-                return aiQuestions.map((q, idx) => {
-                    // رقم الجزء يبدأ من 1
-                    const n = idx + 1;
-                    const uniqueId = 100000000000 + n;
-                    const sourceIdValue = 123567889 + n;
-                    const publicationDate = "2023-10-12T00:00:00";
-                    const instancesCount = 10;
-                    const category = this.customization.category || 'lesson';
-                    const country = this.customization.country || 'us';
-                    const language = this.language || 'en';
-                    const dialect = [this.customization.dialect || 'american british'];
-
-                    // إذا كان السؤال ملفوف داخل parts، خذ أول جزء فقط
-                    let part = q.parts ? q.parts[0] : q;
-
-                    // إذا لم يحدد الذكاء الاصطناعي الإجابة الصحيحة، اجعل أول خيار هو الصحيح
-                    let answerIndex = (typeof part.answer !== 'undefined' && part.answer !== null) ? part.answer : 0;
-
-                    // معالجة نص السؤال
-                    let questionText = '';
-                    if (typeof part.stem === 'string' && part.stem.trim() !== '') {
-                        questionText = part.stem;
-                    } else if (typeof part.question === 'string' && part.question.trim() !== '') {
-                        questionText = `<p>${this.escapeHtml(part.question)}</p>`;
-                    } else {
-                        questionText = '<p>سؤال بدون نص</p>';
-                    }
-
-                    const rebuiltPart = {
-                        n: n,
-                        stem: questionText,
-                        type: part.type || 'unknown',
-                        answer: answerIndex,
-                        choices: Array.isArray(part.choices) ? part.choices.map((choice, i) => {
-                            // معالجة نص الخيار
-                            let text = '';
-                            if (typeof choice === 'string') {
-                                text = choice;
-                            } else if (typeof choice === 'object' && choice !== null) {
-                                if (typeof choice.text === 'string') {
-                                    text = choice.text;
-                                } else if (typeof choice.html_content === 'string') {
-                                    text = choice.html_content.replace(/<[^>]+>/g, '');
-                                } else {
-                                    text = JSON.stringify(choice);
-                                }
-                            } else {
-                                text = String(choice);
-                            }
-                            return {
-                                type: (i === answerIndex) ? 'key' : 'distractor',
-                                unit: (i === answerIndex) ? '<span>unit</span>' : null,
-                                index: i,
-                                values: (i === answerIndex) ? [{ type: 'decimal', value: '1' }] : [],
-                                last_order: false,
-                                fixed_order: (i === 0) ? 4 : (i === 1) ? 1 : (i === 2) ? 3 : 2,
-                                html_content: `<span>${this.escapeHtml(text)}</span>`
-                            };
-                        }) : [],
-                        subtype: part.subtype || null,
-                        standalone: true,
-                        metadata: {
-                            id: uniqueId,
-                            title: "",
-                            automark: true,
-                            category: category,
-                            country: country,
-                            language: language,
-                            dialect: dialect,
-                            mapped_id: uniqueId,
-                            source_id: { value: sourceIdValue, page_number: null },
-                            description: (typeof part.stem === 'string' && part.stem.trim() !== '') ? part.stem.replace(/<[^>]+>/g, '') : (typeof part.question === 'string' ? part.question : 'سؤال بدون نص'),
-                            has_example: true,
-                            parts_count: 1,
-                            instances_count: instancesCount,
-                            publication_date: publicationDate,
-                            statement: null
-                        }
-                    };
-
-                    return { parts: [rebuiltPart] };
-                });
-            }
-
+            // =================================================================
+            // ===== THIS IS THE CORRECTED FUNCTION =====
+            // =================================================================
             transformToAdvancedFormat(question, index) {
                 const typeMap = {
-                    multiple_choice: 'mcq',
-                    true_false: 'mcq',
-                    essay: 'essay',
-                    fill_blank: 'fill_blank',
-                    short_answer: 'short_answer',
-                    matching: 'matching',
-                    unknown: 'unknown'
+                    multiple_choice: 'mcq', true_false: 'mcq', essay: 'essay',
+                    fill_blank: 'fill_blank', short_answer: 'short_answer',
+                    matching: 'matching', unknown: 'unknown'
                 };
 
-                // رقم الجزء يبدأ من 1
                 const n = index + 1;
-                // id ثابت وفريد لكل سؤال (يمكنك تعديله حسب الحاجة)
-                const uniqueId = 100000000000 + n;
-                // source_id.value رقم عشوائي ثابت لكل سؤال (يمكنك تعديله حسب الحاجة)
+                
                 const sourceIdValue = 123567889 + n;
-                // publication_date ثابتة (أو استخدم تاريخ اليوم)
                 const publicationDate = "2023-10-12T00:00:00";
-                // instances_count ثابتة (مثلاً 10)
                 const instancesCount = 10;
-                // category/country/language/dialect من الإعدادات أو ثابتة
                 const category = this.customization.category || 'lesson';
                 const country = this.customization.country || 'us';
                 const language = this.language || 'en';
-                const dialect = [this.customization.dialect || 'american british'];
+                const dialect = [this.customization.dialect || 'Modern_standard'];
 
-                const advancedQuestion = {
-                    parts: [{
-                        n: n,
-                        stem: `<p>${this.escapeHtml(question.question)}</p>`,
-                        type: typeMap[question.type] || 'unknown',
-                        answer: null,
-                        choices: [],
-                        subtype: null,
-                        standalone: true,
-                        metadata: {
-                            id: uniqueId,
-                            title: "",
-                            automark: true,
-                            category: category,
-                            country: country,
-                            language: language,
-                            dialect: dialect,
-                            mapped_id: uniqueId,
-                            source_id: { value: sourceIdValue, page_number: null },
-                            description: question.question,
-                            has_example: true,
-                            parts_count: 1,
-                            instances_count: instancesCount,
-                            publication_date: publicationDate,
-                            statement: null
-                        }
-                    }]
+                const part = {
+                    n: n,
+                    stem: `<p>${this.escapeHtml(question.question)}</p>`,
+                    type: typeMap[question.type] || 'unknown',
+                    answer: null,
+                    choices: [],
+                    subtype: null,
+                    standalone: true
                 };
 
-                // choices مع unit وvalues وfixed_order
                 if ((question.type === 'multiple_choice' || question.type === 'true_false') && Array.isArray(question.choices)) {
-                    advancedQuestion.parts[0].choices = question.choices.map((choice, i) => {
-                        let isCorrect = (i === question.answer);
+                    part.choices = question.choices.map((choice, i) => {
+                        const isCorrect = (i === question.answer);
                         return {
                             type: isCorrect ? 'key' : 'distractor',
                             unit: isCorrect ? '<span>unit</span>' : null,
                             index: i,
                             values: isCorrect ? [{ type: 'decimal', value: '1' }] : [],
                             last_order: false,
-                            fixed_order: (i === 0) ? 4 : (i === 1) ? 1 : (i === 2) ? 3 : 2, // مثال: رتبهم كما في المثال
+                            fixed_order: (i === 0) ? 4 : (i === 1) ? 1 : (i === 2) ? 3 : 2,
                             html_content: `<span>${this.escapeHtml(choice)}</span>`
                         };
                     });
                 }
-                return advancedQuestion;
+
+                const metadata = {
+                    // --- MODIFIED ---
+                    // These fields are now intentionally left null (empty) as requested.
+                    id: null,
+                    mapped_id: null,
+
+                    title: "",
+                    automark: true,
+                    category: category,
+                    country: country,
+                    language: language,
+                    dialect: dialect,
+                    source_id: { value: sourceIdValue, page_number: null },
+                    description: question.question,
+                    has_example: true,
+                    parts_count: 1,
+                    instances_count: instancesCount,
+                    publication_date: publicationDate
+                };
+
+                return {
+                    parts: [part],
+                    metadata: metadata,
+                    statement: null
+                };
             }
             
             convertToJSON() {
@@ -713,7 +645,9 @@
                     return;
                 }
                 const advancedFormatQuestions = this.questions.map((q, index) => this.transformToAdvancedFormat(q, index));
+                
                 const jsonOutput = document.getElementById('jsonOutput');
+                
                 this.jsonForExport = JSON.stringify(advancedFormatQuestions, null, 2);
                 
                 jsonOutput.innerHTML = this.syntaxHighlight(this.jsonForExport);
@@ -726,7 +660,6 @@
 
             clearAll() {
                 document.getElementById('questionInput').value = '';
-                document.getElementById('apiKey').value = '';
                 this.questions = [];
                 this.jsonForExport = '';
                 this.updateUIAfterChange();
@@ -736,7 +669,6 @@
                 document.getElementById('copyBtn').disabled = true;
                 document.getElementById('downloadBtn').disabled = true;
                 document.getElementById('downloadZipBtn').disabled = true;
-                // امسح بيانات CSV من LocalStorage
                 localStorage.removeItem('aiq_csv_data');
                 this.showMessage('تم مسح كل شيء', 'success');
             }
@@ -778,7 +710,7 @@
 
             downloadZip() {
                 if (typeof JSZip === 'undefined') {
-                    this.showMessage('مكتبة JSZip غير متوفرة. تأكد من الاتصال بالإنترنت أو من تحميل المكتبة.', 'error');
+                    this.showMessage('مكتبة JSZip غير متوفرة.', 'error');
                     return;
                 }
                 if (this.questions.length === 0) {
@@ -786,18 +718,17 @@
                     return;
                 }
                 const zip = new JSZip();
-                this.questions.forEach((q, idx) => {
-                    let filename;
-                    // إذا كان هناك csvData وبه Question Id صالح
-                    if (this.csvData && this.csvData[idx] && this.csvData[idx]['Question Id']) {
-                        filename = `${this.csvData[idx]['Question Id']}.json`;
-                    } else {
-                        filename = `question_${q.id || idx + 1}.json`;
-                    }
-                    const content = JSON.stringify(this.transformToAdvancedFormat(q, idx), null, 2);
+                const advancedFormatQuestions = this.questions.map((q, idx) => this.transformToAdvancedFormat(q, idx));
+
+                advancedFormatQuestions.forEach((advQ, idx) => {
+                    const questionIdFromCsv = (this.csvData && this.csvData[idx] && this.csvData[idx]['Question Id']);
+                    // Fallback to a generic name if CSV ID is not available
+                    const filename = `${questionIdFromCsv || ('question_' + (idx + 1))}.json`;
+                    
+                    const content = JSON.stringify(advQ, null, 2);
                     zip.file(filename, content);
                 });
-                // أضف ملف CSV
+                
                 if (this.csvData && this.csvData.length > 0) {
                     zip.file('questions.csv', this.getCSVString());
                 }
@@ -814,8 +745,6 @@
                 });
             }
 
-            // ===== Editing Logic (from original file) =====
-
             deleteQuestion(id) {
                 const questionIndex = this.questions.findIndex(q => q.id === id);
                 if (questionIndex > -1) {
@@ -830,24 +759,20 @@
                     const currentQuestion = this.questions[questionIndex];
                     const nextQuestion = this.questions[questionIndex + 1];
                     
-                    // Use originalText if available, otherwise fallback to question
                     const mergedText = (currentQuestion.originalText || currentQuestion.question) + '\n\n' + (nextQuestion.originalText || nextQuestion.question);
                     
-                    // Re-analyze the merged text block
                     const reAnalyzedQuestion = this.analyzeQuestion(mergedText, currentQuestion.id);
-                    reAnalyzedQuestion.originalText = mergedText; // Store the merged text
+                    reAnalyzedQuestion.originalText = mergedText;
                     
                     this.questions[questionIndex] = reAnalyzedQuestion;
-                    this.questions.splice(questionIndex + 1, 1); // Remove the next question
+                    this.questions.splice(questionIndex + 1, 1);
                     
                     this.updateUIAfterChange('تم دمج السؤالين بنجاح');
                 }
             }
 
-            // ===== تخصيص (Customization Modal) =====
             openCustomizeModal() {
                 document.getElementById('customizeModal').style.display = 'flex';
-                // Set current values
                 document.getElementById('categorySelect').value = this.customization.category;
                 document.getElementById('countrySelect').value = this.customization.country;
                 document.getElementById('dialectSelect').value = this.customization.dialect;
@@ -856,9 +781,7 @@
                 document.getElementById('customizeModal').style.display = 'none';
             }
             saveCustomization() {
-                this.customization.category = document.getElementById('categorySelect').value;
-                this.customization.country = document.getElementById('countrySelect').value;
-                this.customization.dialect = document.getElementById('dialectSelect').value;
+                this.handleCustomizationChange();
                 this.closeCustomizeModal();
                 this.showMessage('تم حفظ الإعدادات بنجاح', 'success');
             }
@@ -868,7 +791,6 @@
                 this.customization.country = document.getElementById('countrySelect').value;
                 this.customization.dialect = document.getElementById('dialectSelect').value;
                 this.saveSettings();
-                // إذا كان الجيسون ظاهر، أعد توليده
                 const jsonOutput = document.getElementById('jsonOutput');
                 if (jsonOutput && jsonOutput.style.display === 'block') {
                     this.convertToJSON();
@@ -906,11 +828,10 @@
                     switch (type) {
                         case 'multiple_choice': structure = this.analyzeMultipleChoice(block); confidence = 0.9; break;
                         case 'true_false': structure = this.analyzeTrueFalse(block); confidence = 0.95; break;
-                        // Add other types if needed
-                        default: structure = { question: block.replace(/^\d+\s*[.-]\s*/, '').trim(), answer: null }; confidence = 0.6;
+                        default: structure = { question: block.replace(/^\d+\s*[.-]\s*/, '').trim(), choices: [], answer: null }; confidence = 0.6;
                     }
                 } catch {
-                    structure = { question: block, answer: null };
+                    structure = { question: block, choices: [], answer: null };
                     confidence = 0.3;
                 }
                 
@@ -918,19 +839,19 @@
             }
 
             detectQuestionType(text) {
-                if (this.language === 'ar') {
-                    if (this.patterns.trueFalse.test(text)) return 'true_false';
-                    const lines = text.split('\n');
-                    if (lines.length > 1 && /^[أ-ي]\s*[.)-]/.test(lines[1].trim())) return 'multiple_choice';
-                    if (this.patterns.multipleChoice.test(text)) return 'multiple_choice';
-                    if (this.patterns.essay.test(text)) return 'essay';
-                } else {
-                    if (this.patterns.en_trueFalse.test(text)) return 'true_false';
-                    const lines = text.split('\n');
-                    if (lines.length > 1 && /^[A-Da-d]\s*[.)-]/.test(lines[1].trim())) return 'multiple_choice';
-                    if (this.patterns.en_multipleChoice.test(text)) return 'multiple_choice';
-                    if (this.patterns.en_essay.test(text)) return 'essay';
-                }
+                const langPatterns = this.language === 'ar' ? this.patterns : {
+                    trueFalse: this.patterns.en_trueFalse,
+                    multipleChoice: this.patterns.en_multipleChoice,
+                    essay: this.patterns.en_essay
+                };
+
+                if (langPatterns.trueFalse.test(text)) return 'true_false';
+                
+                const lines = text.split('\n');
+                const choiceMarker = this.language === 'ar' ? /^[أ-ي]\s*[.)-]/ : /^[A-Da-d]\s*[.)-]/;
+                if (lines.some(line => choiceMarker.test(line.trim()))) return 'multiple_choice';
+
+                if (langPatterns.essay.test(text)) return 'essay';
                 return 'unknown';
             }
 
@@ -939,13 +860,17 @@
                 let question = lines[0].replace(/^\d+\s*[.-]\s*/, '').trim();
                 const choices = [];
                 let correctAnswerIndex = null;
+                
+                const choiceMarker = this.language === 'ar' ? /^[أ-ي]\s*[.)-]\s*/ : /^[A-Da-d]\s*[.)-]\s*/;
+
                 for (let i = 1; i < lines.length; i++) {
-                    let choiceText = lines[i];
-                    if (this.language === 'ar') {
-                        choiceText = choiceText.replace(/^[أ-ي]\s*[.)-]\s*/, '').trim();
-                    } else {
-                        choiceText = choiceText.replace(/^[A-Da-d]\s*[.)-]\s*/, '').trim();
+                    let choiceText = lines[i].trim();
+                    if (!choiceMarker.test(choiceText)) {
+                        question += ' ' + choiceText;
+                        continue;
                     }
+
+                    choiceText = choiceText.replace(choiceMarker, '').trim();
                     if (choiceText.includes('*')) {
                         correctAnswerIndex = choices.length;
                         choiceText = choiceText.replace(/\*/g, '').trim();
@@ -957,27 +882,19 @@
 
             analyzeTrueFalse(text) {
                 let question, answer = null;
-                if (this.language === 'ar') {
-                    question = text.replace(/(صح\s*(أم|أو|\/)\s*خطأ)/i, '').trim();
-                    const match = text.match(/\((.*?)\)/);
-                    if (match) {
-                        const answerText = match[1].trim().toLowerCase();
-                        if (answerText === 'صح') answer = 0;
-                        if (answerText === 'خطأ') answer = 1;
-                        question = question.replace(/\(.*?\)/, '').trim();
-                    }
-                    return { question, choices: ['صح', 'خطأ'], answer };
-                } else {
-                    question = text.replace(/(true\s*(or|\/)\s*false)/i, '').trim();
-                    const match = text.match(/\((.*?)\)/);
-                    if (match) {
-                        const answerText = match[1].trim().toLowerCase();
-                        if (answerText === 'true') answer = 0;
-                        if (answerText === 'false') answer = 1;
-                        question = question.replace(/\(.*?\)/, '').trim();
-                    }
-                    return { question, choices: ['True', 'False'], answer };
+                const patterns = this.language === 'ar' 
+                    ? { regex: /(صح\s*(أم|أو|\/)\s*خطأ)/i, choices: ['صح', 'خطأ'], trueStr: 'صح', falseStr: 'خطأ' }
+                    : { regex: /(true\s*(or|\/)\s*false)/i, choices: ['True', 'False'], trueStr: 'true', falseStr: 'false' };
+                
+                question = text.replace(patterns.regex, '').trim();
+                const match = text.match(/\((.*?)\)/);
+                if (match) {
+                    const answerText = match[1].trim().toLowerCase();
+                    if (answerText === patterns.trueStr.toLowerCase()) answer = 0;
+                    if (answerText === patterns.falseStr.toLowerCase()) answer = 1;
+                    question = question.replace(/\(.*?\)/, '').trim();
                 }
+                return { question, choices: patterns.choices, answer };
             }
 
             // ===== UI Update & Utility Functions =====
@@ -988,7 +905,6 @@
                 this.displayResults();
                 const jsonOutput = document.getElementById('jsonOutput');
                 if (jsonOutput.style.display === 'block') { this.convertToJSON(); }
-                // تفعيل زر ZIP إذا في أسئلة
                 document.getElementById('downloadZipBtn').disabled = this.questions.length === 0;
                 if (message) { this.showMessage(message, 'success'); }
             }
@@ -1006,7 +922,7 @@
                     btn.innerHTML = '<div class="spinner"></div> <span>جاري...</span>';
                 } else {
                     btn.disabled = false;
-                    btn.innerHTML = '💎 تحسين بالـ AI';
+                    btn.innerHTML = this.language === 'ar' ? '💎 تحسين بالـ AI' : '💎 Enhance with AI';
                 }
             }
 
@@ -1048,7 +964,7 @@
                 if (this.questions.length === 0) {
                     previewContainer.innerHTML = `<div style="text-align: center; color: #6b7280; padding: 40px; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
                         <div style="font-size: 3em; margin-bottom: 20px;">📋</div>
-                        <p>ستظهر معاينة الأسئلة هنا بعد التحليل</p>
+                        <p>${this.language === 'ar' ? 'ستظهر معاينة الأسئلة هنا بعد التحليل' : 'Questions preview will appear here'}</p>
                     </div>`;
                     return;
                 }
@@ -1056,67 +972,42 @@
                     const questionDiv = document.createElement('div');
                     questionDiv.className = 'question-preview';
                     const typeTranslations = { multiple_choice: 'اختيار من متعدد', true_false: 'صح / خطأ', fill_blank: 'ملء الفراغ', essay: 'مقالي', matching: 'مطابقة', short_answer: 'إجابة قصيرة', unknown: 'غير معروف' };
-                    // احصل على Question Id من csvData إذا كانت موجودة
-                    const questionId = (this.csvData && this.csvData[index] && this.csvData[index]['Question Id']) || q.id;
-                    if (q._editing) {
-                        let editContent = `
-                            <div class="question-type-badge type-${q.type || 'unknown'}">${typeTranslations[q.type] || 'غير معروف'}</div>
-                            <textarea id="edit-question-${q.id}" style="width:100%;margin-bottom:10px;">${this.escapeHtml(q.question)}</textarea>
-                        `;
-                        if (q.choices) {
-                            editContent += q.choices.map((choice, i) => `
-                                <input id="edit-choice-${q.id}-${i}" type="text" value="${this.escapeHtml(choice)}" style="width:100%;margin-bottom:6px;" />
-                            `).join('');
-                        }
-                        editContent += `
-                            <div style="margin-top:10px;display:flex;gap:10px;">
-                                <button class="btn btn-success" onclick="app.saveEditQuestion(${q.id})">💾 حفظ</button>
-                                <button class="btn btn-secondary" onclick="app.cancelEditQuestion(${q.id})">❌ إلغاء</button>
-                            </div>
-                        `;
-                        questionDiv.innerHTML = editContent;
-                    } else {
-                        let content = `
-                            <div class="question-actions">
-                                <button class="action-btn" onclick="app.mergeQuestions(${q.id})" title="دمج مع التالي" ${index === this.questions.length - 1 ? 'disabled' : ''}>🔗</button>
-                                <button class="action-btn" onclick="app.deleteQuestion(${q.id})" title="حذف السؤال">🗑️</button>
-                                <button class="action-btn" onclick="app.startEditQuestion(${q.id})" title="تعديل السؤال">✏️</button>
-                            </div>
-                            <div class="question-type-badge type-${q.type || 'unknown'}">
-                                ${typeTranslations[q.type] || 'غير معروف'} | ID: ${questionId}
-                            </div>
-                            <h4>${q.id}. <span class="question-stem" style="display:inline;">${
-                                q.question ? this.escapeHtml(q.question)
-                                : (q.stem ? q.stem.replace(/<[^>]+>/g, '')
-                                : 'سؤال بدون نص')
-                            }</span></h4>`;
-                        if (q.choices) {
-                            content += q.choices.map((choice, i) => `
-                                <div class="choice-item ${i === q.answer ? 'correct' : ''}"
-                                     style="cursor:pointer;"
-                                     onclick="app.setCorrectAnswer(${q.id}, ${i})"
-                                     title="اضغط لجعل هذا هو الجواب الصحيح">
-                                    ${choice.html_content ? choice.html_content : this.escapeHtml(choice.text || (typeof choice === 'string' ? choice : ''))}
-                                </div>`).join('');
-                        } else if (q.answer !== null && q.answer !== undefined && q.answer !== '') {
-                             content += `<div class="choice-item correct">الإجابة: ${this.escapeHtml(q.answer)}</div>`;
-                        }
-                        questionDiv.innerHTML = content;
+                    const enTypeTranslations = { multiple_choice: 'Multiple Choice', true_false: 'True/False', fill_blank: 'Fill in the Blank', essay: 'Essay', matching: 'Matching', short_answer: 'Short Answer', unknown: 'Unknown' };
+                    const translations = this.language === 'ar' ? typeTranslations : enTypeTranslations;
+                    
+                    const questionIdFromCsv = (this.csvData && this.csvData[index] && this.csvData[index]['Question Id']);
+                    const displayId = questionIdFromCsv || `(فارغ)`;
+
+                    let content = `
+                        <div class="question-actions">
+                            <button class="action-btn" onclick="app.mergeQuestions(${q.id})" title="دمج مع التالي" ${index === this.questions.length - 1 ? 'disabled' : ''}>🔗</button>
+                            <button class="action-btn" onclick="app.deleteQuestion(${q.id})" title="حذف السؤال">🗑️</button>
+                        </div>
+                        <div class="question-type-badge type-${q.type || 'unknown'}">
+                            ${translations[q.type] || 'Unknown'} | ID: ${displayId}
+                        </div>
+                        <h4>${q.id}. <span class="question-stem" style="display:inline;">${this.escapeHtml(q.question)}</span></h4>`;
+                    
+                    if (q.choices && q.choices.length > 0) {
+                        content += q.choices.map((choice, i) => `
+                            <div class="choice-item ${i === q.answer ? 'correct' : ''}"
+                                 style="cursor:pointer;"
+                                 onclick="app.setCorrectAnswer(${q.id}, ${i})"
+                                 title="اضغط لجعل هذا هو الجواب الصحيح">
+                                 ${this.escapeHtml(choice)}
+                            </div>`).join('');
+                    } else if (q.answer !== null && q.answer !== undefined && q.answer !== '') {
+                         content += `<div class="choice-item correct">الإجابة: ${this.escapeHtml(q.answer)}</div>`;
                     }
+                    questionDiv.innerHTML = content;
                     previewContainer.appendChild(questionDiv);
                 });
             }
             
             escapeHtml(text) {
                 if (typeof text !== 'string') return text;
-                // نهرب كل شيء ما عدا <u> و </u>
-                return text
-                    .replace(/&/g, "&amp;")
-                    .replace(/</g, "&lt;")
-                    .replace(/>/g, "&gt;")
-                    // أعد وسم <u> و </u> كما هي (بعد تهريبها)
-                    .replace(/&lt;u&gt;/g, "<u>")
-                    .replace(/&lt;\/u&gt;/g, "</u>");
+                const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+                return text.replace(/[&<>"']/g, m => map[m]);
             }
 
             syntaxHighlight(json) {
@@ -1174,7 +1065,6 @@
                 this.language = this.language === 'ar' ? 'en' : 'ar';
                 this.updateInterfaceLanguage();
                 this.saveSettings();
-                // إعادة توليد الجيسون لو ظاهر
                 const jsonOutput = document.getElementById('jsonOutput');
                 if (jsonOutput && jsonOutput.style.display === 'block') {
                     this.convertToJSON();
@@ -1183,63 +1073,42 @@
 
             updateInterfaceLanguage() {
                 const isAr = this.language === 'ar';
-                // html/lang/dir
                 document.documentElement.lang = isAr ? 'ar' : 'en';
                 document.documentElement.dir = isAr ? 'rtl' : 'ltr';
-                // زر اللغة
                 document.getElementById('langSwitchBtn').innerHTML = isAr ? '🌐 English' : '🌐 العربية';
-                // العناوين
-                document.querySelector('.header h1').textContent = isAr ? '🚀 محول الأسئلة الذكي المتطور' : '🚀 Advanced Smart Question Converter';
+                document.querySelector('.header h1').textContent = isAr ? '🚀 محول الأسئلة الذكي' : '🚀 Smart Question Converter';
                 document.querySelector('.header p').textContent = isAr ? 'حوّل نصوص الأسئلة إلى صيغة JSON متقدمة بضغطة زر' : 'Convert question texts to advanced JSON format with one click';
                 document.querySelector('.ai-badge').textContent = isAr ? '🤖 AI Powered' : '🤖 AI Powered';
-                // لوحات
-                document.querySelectorAll('.panel h3')[0].textContent = isAr ? '📝 إدخال الأسئلة' : '📝 Input Questions';
-                document.querySelectorAll('.panel h3')[1].textContent = isAr ? '🔍 تحليل ومخرجات' : '🔍 Analysis & Output';
-                document.querySelectorAll('.panel h3')[2].textContent = isAr ? '👁️ معاينة الأسئلة' : '👁️ Questions Preview';
-                // textarea placeholder
+                document.querySelectorAll('.panel h3')[0].innerHTML = isAr ? '📝 إدخال الأسئلة' : '📝 Input Questions';
+                document.querySelectorAll('.panel h3')[1].innerHTML = isAr ? '🔍 تحليل ومخرجات' : '🔍 Analysis & Output';
+                document.querySelectorAll('.panel h3')[2].innerHTML = isAr ? '👁️ معاينة الأسئلة' : '👁️ Questions Preview';
                 document.getElementById('questionInput').placeholder = isAr ?
                     'أدخل الأسئلة هنا... مثال:\n1. ما هي عاصمة مصر؟\nأ) القاهرة*\nب) الإسكندرية\n\n2. الشمس تشرق من الغرب. (خطأ)'
                     :
                     'Enter questions here... Example:\n1. What is the capital of Egypt?\nA) Cairo*\nB) Alexandria\n\n2. The sun rises from the west. (False)';
-                // أزرار الإدخال
                 document.querySelector('.btn-primary[onclick*="smartAnalyze"]').textContent = isAr ? '🤖 تحليل ذكي' : '🤖 Smart Analyze';
-                document.getElementById('aiEnhanceBtn').innerHTML = isAr ? '💎 تحسين بالـ AI' : '💎 Enhance with AI';
+                this.toggleAIButtonLoading(this.isAIProcessing); 
                 document.getElementById('customizeBtn').innerHTML = isAr ? '⚙️ تخصيص' : '⚙️ Customize';
-                // أزرار التحويل والمسح
                 document.querySelector('.btn-success[onclick*="convertToJSON"]').textContent = isAr ? '🔄 تحويل لـ JSON متقدم' : '🔄 Convert to Advanced JSON';
                 document.querySelector('.btn-secondary[onclick*="clearAll"]').textContent = isAr ? '🗑️ مسح الكل' : '🗑️ Clear All';
-                // تحليل ومخرجات
                 const analysisLabels = isAr ? ['جودة الكشف:', 'دقة التصنيف:', 'اكتمال البيانات:'] : ['Detection Quality:', 'Classification Accuracy:', 'Data Completeness:'];
                 document.querySelectorAll('.analysis-item span')[0].textContent = analysisLabels[0];
                 document.querySelectorAll('.analysis-item span')[1].textContent = analysisLabels[1];
                 document.querySelectorAll('.analysis-item span')[2].textContent = analysisLabels[2];
-                // إحصائيات
                 const statLabels = isAr ? ['إجمالي الأسئلة', 'اختيار متعدد', 'صح/خطأ', 'مقالية', 'غير معروف', 'معدل الثقة'] : ['Total Questions', 'Multiple Choice', 'True/False', 'Essay', 'Unknown', 'Confidence'];
-                document.querySelectorAll('.stat-card h4')[0].textContent = statLabels[0];
-                document.querySelectorAll('.stat-card h4')[1].textContent = statLabels[1];
-                document.querySelectorAll('.stat-card h4')[2].textContent = statLabels[2];
-                document.querySelectorAll('.stat-card h4')[3].textContent = statLabels[3];
-                document.querySelectorAll('.stat-card h4')[4].textContent = statLabels[4];
-                document.querySelectorAll('.stat-card h4')[5].textContent = statLabels[5];
-                // أزرار نسخ وتحميل
+                document.querySelectorAll('.stat-card h4').forEach((el, i) => el.textContent = statLabels[i]);
                 document.getElementById('copyBtn').textContent = isAr ? '📋 نسخ JSON' : '📋 Copy JSON';
                 document.getElementById('downloadBtn').textContent = isAr ? '💾 تحميل' : '💾 Download';
                 document.getElementById('downloadZipBtn').textContent = isAr ? '🗜️ تحميل كـ ZIP' : '🗜️ Download as ZIP';
-                // نافذة التخصيص
                 document.querySelector('#customizeModal h2').textContent = isAr ? 'تخصيص الإعدادات' : 'Customize Settings';
                 document.querySelector('label[for="categorySelect"]').textContent = isAr ? 'الفئة' : 'Category';
                 document.querySelector('label[for="countrySelect"]').textContent = isAr ? 'الدولة' : 'Country';
                 document.querySelector('label[for="dialectSelect"]').textContent = isAr ? 'اللهجة' : 'Dialect';
                 document.querySelector('#customizeModal .btn-primary').textContent = isAr ? 'حفظ' : 'Save';
-                // معاينة الأسئلة
-                const previewContainer = document.getElementById('questionsPreview');
-                if (this.questions.length === 0) {
-                    previewContainer.innerHTML = isAr ? `<div style="text-align: center; color: #6b7280; padding: 40px; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;"><div style="font-size: 3em; margin-bottom: 20px;">📋</div><p>ستظهر معاينة الأسئلة هنا بعد التحليل</p></div>` : `<div style="text-align: center; color: #6b7280; padding: 40px; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;"><div style="font-size: 3em; margin-bottom: 20px;">📋</div><p>Questions preview will appear here after analysis</p></div>`;
-                }
+                this.displayResults();
             }
 
             setCorrectAnswer(questionId, choiceIndex) {
-                // ابحث عن السؤال
                 const q = this.questions.find(q => q.id === questionId);
                 if (!q || !Array.isArray(q.choices)) return;
                 q.answer = choiceIndex;
@@ -1276,44 +1145,13 @@
                     this.apiKey = apiKey;
                 }
             }
-
-            startEditQuestion(questionId) {
-                const q = this.questions.find(q => q.id === questionId);
-                if (!q) return;
-                q._editing = true;
-                this.displayResults();
-            }
-
-            saveEditQuestion(questionId) {
-                const q = this.questions.find(q => q.id === questionId);
-                if (!q) return;
-                // احصل على القيم الجديدة
-                const questionInput = document.getElementById(`edit-question-${questionId}`);
-                if (questionInput) q.question = questionInput.value;
-                if (q.choices) {
-                    q.choices = q.choices.map((c, i) => {
-                        const choiceInput = document.getElementById(`edit-choice-${questionId}-${i}`);
-                        return choiceInput ? choiceInput.value : c;
-                    });
-                }
-                q._editing = false;
-                this.updateUIAfterChange('تم حفظ التعديلات');
-            }
-
-            cancelEditQuestion(questionId) {
-                const q = this.questions.find(q => q.id === questionId);
-                if (!q) return;
-                q._editing = false;
-                this.displayResults();
-            }
-
+            
             // ===== CSV Logic =====
             openCSVModal() {
                 if (this.questions.length === 0) {
                     this.showMessage('يجب إدخال وتحليل الأسئلة أولاً قبل فتح جدول CSV', 'warning');
                     return;
                 }
-                // إعداد الأعمدة
                 const columns = [
                     {data: 'Question Id', type: 'text'},
                     {data: 'Lang', type: 'text', readOnly: true},
@@ -1322,7 +1160,6 @@
                     {data: 'Category', type: 'text', readOnly: true},
                     {data: 'Dialect', type: 'text', readOnly: true}
                 ];
-                // جلب بيانات CSV من LocalStorage إذا وجدت
                 const saved = localStorage.getItem('aiq_csv_data');
                 if (saved) {
                     this.csvData = JSON.parse(saved);
@@ -1331,7 +1168,7 @@
                     const defaultCategory = this.customization.category || 'lesson';
                     const defaultDialect = this.customization.dialect || 'Modern_standard';
                     this.csvData = this.questions.map((q, idx) => ({
-                        'Question Id': q.id,
+                        'Question Id': '', // Start with empty ID
                         'Lang': defaultLang,
                         'Lesson Id': '',
                         'Attributes': q.type === 'multiple_choice' ? 'mcq' : (q.type || ''),
@@ -1339,11 +1176,8 @@
                         'Dialect': defaultDialect
                     }));
                 }
-                // عرض المودال
                 document.getElementById('csvModalBg').style.display = 'flex';
-                // تهيئة Handsontable
                 if (this.hotInstance) this.hotInstance.destroy();
-                const self = this;
                 this.hotInstance = new Handsontable(document.getElementById('hotTable'), {
                     data: this.csvData,
                     colHeaders: ['Question Id', 'Lang', 'Lesson Id', 'Attributes', 'Category', 'Dialect'],
@@ -1357,22 +1191,8 @@
                     stretchH: 'all',
                     allowInsertRow: true,
                     allowRemoveRow: true,
-                    allowCopy: true,
-                    allowPaste: true,
                     contextMenu: true,
-                    cells: (row, col) => {
-                        const cellProperties = {};
-                        if (col === 0 && this.isDuplicateQuestionId(row)) {
-                            cellProperties.renderer = (instance, td, ...args) => {
-                                Handsontable.renderers.TextRenderer.apply(this, arguments);
-                                td.style.background = '#fee2e2';
-                                td.style.color = '#b91c1c';
-                            };
-                        }
-                        return cellProperties;
-                    }
                 });
-                this.validateCSV();
             }
 
             closeCSVModal() {
@@ -1385,79 +1205,35 @@
                 if (this.hotInstance) {
                     this.csvData = this.hotInstance.getData().map(row => {
                         return {
-                            'Question Id': row[0],
-                            'Lang': row[1],
-                            'Lesson Id': row[2],
-                            'Attributes': row[3],
-                            'Category': row[4],
-                            'Dialect': row[5]
+                            'Question Id': row[0], 'Lang': row[1], 'Lesson Id': row[2],
+                            'Attributes': row[3], 'Category': row[4], 'Dialect': row[5]
                         };
                     });
-                    // حفظ بيانات CSV في LocalStorage
                     localStorage.setItem('aiq_csv_data', JSON.stringify(this.csvData));
                     this.showMessage('تم حفظ بيانات CSV بنجاح', 'success');
                     this.closeCSVModal();
-                    // تحديث معاينة الأسئلة تلقائيًا
                     this.displayResults();
                 }
             }
 
-            isDuplicateQuestionId(rowIdx) {
-                const val = this.csvData[rowIdx]['Question Id'];
-                if (!val) return false;
-                let count = 0;
-                for (let i = 0; i < this.csvData.length; i++) {
-                    if (this.csvData[i]['Question Id'] == val) count++;
-                }
-                return count > 1;
-            }
-
-            validateCSV() {
-                // تلوين الخلايا المكررة وتحذير
-                let hasDuplicate = false;
-                const ids = {};
-                for (let i = 0; i < this.csvData.length; i++) {
-                    const id = this.csvData[i]['Question Id'];
-                    if (id) {
-                        ids[id] = (ids[id] || 0) + 1;
-                        if (ids[id] > 1) hasDuplicate = true;
-                    }
-                }
-                const warn = document.getElementById('csvWarning');
-                if (hasDuplicate) {
-                    warn.style.display = 'block';
-                    warn.textContent = 'هناك Question Id مكرر!';
-                } else {
-                    warn.style.display = 'none';
-                }
-                if (this.hotInstance) this.hotInstance.render();
-            }
-
             getCSVString() {
-                // تحويل البيانات إلى CSV نصي
                 const header = ['Question Id', 'Lang', 'Lesson Id', 'Attributes', 'Category', 'Dialect'];
-                const rows = this.csvData.map(row => header.map(h => (row[h] || '').toString().replace(/"/g, '""')));
-                const csv = [header.join(',')].concat(rows.map(r => r.map(f => '"' + f + '"').join(','))).join('\n');
-                return csv;
+                const rows = this.csvData.map(row => header.map(h => `"${(row[h] || '').toString().replace(/"/g, '""')}"`));
+                return [header.join(',')].concat(rows.map(r => r.join(','))).join('\n');
             }
         }
 
         const app = new AIQuestionConverter();
-        // عند التحميل، تأكد أن اللغة الافتراضية صحيحة
         window.addEventListener('DOMContentLoaded', () => {
             app.updateInterfaceLanguage();
-            // تأكد من مزامنة القيم في الواجهة مع الإعدادات المحفوظة
             document.getElementById('categorySelect').value = app.customization.category;
             document.getElementById('countrySelect').value = app.customization.country;
             document.getElementById('dialectSelect').value = app.customization.dialect;
-            // إذا كان هناك مفتاح API محفوظ، ضعه في الحقل
             if (app.apiKey) {
                 document.getElementById('apiKey').value = app.apiKey;
             }
-            // احفظ تلقائياً عند تغيير قيمة الحقل
             document.getElementById('apiKey').addEventListener('input', () => app.saveApiKey());
         });
     </script>
 </body>
 </html>
-
