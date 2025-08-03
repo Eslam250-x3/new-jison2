@@ -961,7 +961,39 @@
                         this.showMessage(this.language === this.Language.ARABIC ? 'الرجاء إدخال مفتاح Gemini API أولاً' : 'Please enter Gemini API key first', 'warning');
                         return;
                     }
-                    // ... rest of the logic is the same
+                    const rawText = document.getElementById('questionInput').value.trim();
+                    if (!rawText) {
+                        this.showMessage(this.language === this.Language.ARABIC ? 'الرجاء إدخال النص أولاً' : 'Please enter text first', 'warning');
+                        return;
+                    }
+                    if (this.isAIProcessing) {
+                        this.showMessage(this.language === this.Language.ARABIC ? 'جاري المعالجة بالذكاء الاصطناعي...' : 'AI processing in progress...', 'warning');
+                        return;
+                    }
+
+                    this.isAIProcessing = true;
+                    const enhanceBtn = document.getElementById('aiEnhanceBtn');
+                    const originalText = enhanceBtn.innerHTML;
+                    
+                    enhanceBtn.innerHTML = `<div class="spinner"></div> ${this.language === 'ar' ? 'جاري التنسيق...' : 'Formatting...'}`;
+                    enhanceBtn.disabled = true;
+
+                    try {
+                        const formattedText = await this.formatTextWithAI(rawText, apiKey);
+                        if (formattedText) {
+                            document.getElementById('questionInput').value = formattedText;
+                            this.showMessage(this.language === 'ar' ? 'تم تنسيق النص بنجاح! يمكنك الآن تحليله.' : 'Text formatted successfully! You can now analyze it.', 'success');
+                        } else {
+                            this.showMessage(this.language === 'ar' ? 'فشل في تنسيق النص. حاول مرة أخرى.' : 'Failed to format text. Please try again.', 'error');
+                        }
+                    } catch (error) {
+                        this.logger.error('AI Formatting Error:', error);
+                        this.showMessage(`${this.language === 'ar' ? 'خطأ في التنسيق: ' : 'Formatting error: '}${error.message}`, 'error');
+                    } finally {
+                        this.isAIProcessing = false;
+                        enhanceBtn.innerHTML = originalText;
+                        enhanceBtn.disabled = false;
+                    }
                 }
 
                 async formatTextWithAI(rawText, apiKey) {
@@ -997,7 +1029,6 @@
                 }
                 
                 buildFormattingPrompt(rawText) {
-                    // Logic is the same
                     const isArabic = this.language === this.Language.ARABIC;
                     const selectedType = this.activeQuestionType;
                     const typeConfig = this.questionTypeConfigs[selectedType];
@@ -1010,8 +1041,60 @@
 
                     const example = formatExamples[selectedType] || formatExamples.mcq;
                     
-                    const basePrompt = isArabic ? `...` : `...`; // Same prompt text
+                    const basePrompt = isArabic ? `
+أنت مُنسق أسئلة ذكي. مهمتك تحويل النص العادي إلى تنسيق مُحدد.
+
+النص المُدخل:
+${rawText}
+
+نوع السؤال المطلوب: ${typeConfig?.label || selectedType}
+
+التنسيق المطلوب:
+${example}
+
+قواعد التنسيق:
+1. استخدم [STEM] لنص السؤال
+2. استخدم [CHOICES] للخيارات (ضع * قبل الإجابة الصحيحة، - قبل الخاطئة)
+3. استخدم [ANSWER] للإجابة المباشرة
+4. استخدم [GAPS] لإجابات الفراغات
+5. استخدم [MATCHING_PAIRS] للمطابقة (تنسيق: العنصر الأول | العنصر الثاني)
+6. افصل بين الأسئلة بـ ---
+7. لا تضع معلومات وصفية (id, type, language)
+
+أعد تنسيق النص:
+` : `
+You are a smart question formatter. Your task is to convert plain text into a specific format.
+
+Input text:
+${rawText}
+
+Required question type: ${typeConfig?.label || selectedType}
+
+Required format:
+${example}
+
+Formatting rules:
+1. Use [STEM] for question text
+2. Use [CHOICES] for options (* before correct answer, - before wrong ones)
+3. Use [ANSWER] for direct answers
+4. Use [GAPS] for gap fill answers
+5. Use [MATCHING_PAIRS] for matching (format: Item1 | Item2)
+6. Separate questions with ---
+7. Don't add metadata (id, type, language)
+
+Reformat the text:
+`;
                     return basePrompt;
+                }
+
+                cleanFormattedText(text) {
+                    let cleaned = text.trim();
+                    cleaned = cleaned.replace(/^```[\s\S]*?```$/gm, '');
+                    cleaned = cleaned.replace(/^Here's the formatted text:?/gmi, '');
+                    cleaned = cleaned.replace(/^إليك النص المُنسق:?/gmi, '');
+                    cleaned = cleaned.replace(/^The formatted text is:?/gmi, '');
+                    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+                    return cleaned.trim();
                 }
 
                 // ***************************************************************
@@ -1035,12 +1118,6 @@
                     this.showMessage(this.language === this.Language.ARABIC ? 'تم تحويل الأسئلة إلى الصيغة المتقدمة بنجاح' : 'Successfully converted to advanced format', 'success');
                 }
 
-                /**
-                 * Transforms a single parsed question object into the final advanced JSON format.
-                 * @param {object} question The intermediate question object from the parser.
-                 * @param {number} index The index of the question in the list.
-                 * @returns {object} The final, structured JSON object for the question.
-                 */
                 transformToAdvancedFormat(question, index) {
                     const meta = question.metadata;
                     const lang = meta.language || this.customization.lang;
@@ -1075,13 +1152,6 @@
                     };
                 }
 
-                /**
-                 * Transforms a single part of a question into its final JSON structure.
-                 * @param {object} part The intermediate part object.
-                 * @param {string} lang The language of the question.
-                 * @param {number} index The index of the part.
-                 * @returns {object} The structured JSON for the part.
-                 */
                 _transformPart(part, lang, index) {
                     const partJson = {
                         n: index + 1,
