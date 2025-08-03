@@ -1028,16 +1028,16 @@
                     }
                 }
                 
-                buildFormattingPrompt(rawText) {
-                    const isArabic = this.language === this.Language.ARABIC;
-                    const selectedType = this.activeQuestionType;
-                    const typeConfig = this.questionTypeConfigs[selectedType];
-                    
-                    const formatExamples = {
-                        [this.QuestionType.MCQ]: `[STEM]\nWhat is the capital of France?\n[CHOICES]\n- London\n- Berlin\n* Paris\n- Madrid`,
-                        [this.QuestionType.STRING]: `[STEM]\nWhat is the largest planet in our solar system?\n[ANSWER]\nJupiter`,
-                        // ... more examples
-                    };
+               // الكود الصحيح الذي يجب وضعه
+const formatExamples = {
+    [this.QuestionType.MCQ]: `[STEM]\nWhat is the capital of France?\n[CHOICES]\n- London\n- Berlin\n* Paris\n- Madrid`,
+    [this.QuestionType.MRQ]: `[STEM]\nWhich of the following are programming languages?\n[CHOICES]\n* Python\n- HTML\n* JavaScript\n- CSS`,
+    [this.QuestionType.STRING]: `[STEM]\nWhat is the largest planet in our solar system?\n[ANSWER]\nJupiter`,
+    [this.QuestionType.GAP_TEXT]: `[STEM]\nThe [BLANK] is the largest planet in our solar system. It has [BLANK] moons.\n[GAPS]\nJupiter\n79`,
+    [this.QuestionType.MATCHING]: `[STEM]\nMatch the countries with their capitals:\n[MATCHING_PAIRS]\nFrance | Paris\nGermany | Berlin\nItaly | Rome`,
+    [this.QuestionType.OQ]: `[STEM]\nArrange these numbers in ascending order:\n[CHOICES]\n5\n2\n8\n1`,
+    [this.QuestionType.FRQ]: `[STEM]\nExplain the process of photosynthesis.\n[ANSWER]\nPhotosynthesis is the process by which plants convert sunlight, carbon dioxide, and water into glucose and oxygen.`
+};
 
                     const example = formatExamples[selectedType] || formatExamples.mcq;
                     
