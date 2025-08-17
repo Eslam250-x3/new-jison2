@@ -663,10 +663,13 @@
                     [this.QuestionType.FRQ]: { label: 'Free Response', jsonType: 'frq' },
                     [this.QuestionType.OQ]: { label: 'Ordering (OQ)', jsonType: 'oq' },
                     [this.QuestionType.FRQ_AI]: { label: 'FRQ (AI)', jsonType: 'frq_ai' },
-                    [this.QuestionType.INPUT_BOX]: { label: 'Input Box', jsonType: 'input_box' }
+                    [this.QuestionType.INPUT_BOX]: { label: 'Input Box', jsonType: 'input_box' },
+                    [this.QuestionType.UNKNOWN]: { label: 'Unknown', jsonType: 'unknown' } // FIX: Added missing UNKNOWN type configuration
                 };
                 this.questionTypeConfigs = configs;
                 for (const typeKey in configs) {
+                    // Do not create a button for the "Unknown" type
+                    if (typeKey === this.QuestionType.UNKNOWN) continue;
                     const config = configs[typeKey];
                     const button = document.createElement('button');
                     button.className = 'q-type-btn';
@@ -1559,11 +1562,13 @@ ${rawText}
                 return result;
             }
             _transformInputBoxPart(part) {
-                const answer = { 
-                    value: part.answer.value, 
-                    unit: part.answer.unit || null,
-                    constrains: { type: "integer" } 
+                const answer = {
+                    value: part.answer.value,
+                    constrains: { type: "integer" }
                 };
+                if (part.answer.unit) {
+                    answer.unit = part.answer.unit;
+                }
                 return { choices: [], answer };
             }
             // ***************************************************************
@@ -2131,12 +2136,13 @@ ${rawText}
                 }
                 const csvRowsData = this.questions.map((q, idx) => {
                     const transformedQ = this.transformToAdvancedFormat(q, idx);
-                    const firstType = q.parts && q.parts.length > 0 ? (this.questionTypeConfigs[q.parts[0].type]?.jsonType || q.parts[0].type) : "";
+                    // FIX: Combine all part types for the Attributes column
+                    const attributes = q.parts.map(p => this.questionTypeConfigs[p.type]?.jsonType || p.type).join(';');
                     return [
                         transformedQ.metadata.id,
                         transformedQ.metadata.language,
                         '', 
-                        firstType,
+                        attributes,
                         transformedQ.metadata.category,
                         Array.isArray(transformedQ.metadata.dialect) ? transformedQ.metadata.dialect.join(', ') : transformedQ.metadata.dialect
                     ];
@@ -2270,7 +2276,7 @@ ${rawText}
 
             // --- TAGS MODAL ---
             populateTagsModal() {
-                 const templates = [
+                const templates = [
                     { name: 'MCQ', hint: 'إدراج قالب سؤال اختيار من متعدد', content: 'type: mcq\n[STEM]\n\n[CHOICES]\n* \n- \n- \n- \n---\n' },
                     { name: 'Matching', hint: 'إدراج قالب سؤال توصيل', content: 'type: matching\n[STEM]\n\n[MATCHING_PAIRS]\n | \n | \n---\n' },
                     { name: 'Gap Text', hint: 'إدراج قالب سؤال ملء فراغات', content: 'type: gapText\n[STEM]\n[BLANK]\n[GAPS]\n\n---\n' },
